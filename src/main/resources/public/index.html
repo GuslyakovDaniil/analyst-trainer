@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Analyst LMS Pro</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        :root { --primary: #1a237e; --bg: #f8fafc; }
+        body { background: var(--bg); font-family: 'Segoe UI', sans-serif; }
+        .navbar { background: var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .card { border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .screen { display: none; padding: 20px 0; }
+        .active-screen { display: block; }
+        .timer { font-size: 1.6rem; font-weight: bold; color: #d32f2f; }
+        .topic-card { cursor: pointer; transition: 0.3s; height: 100%; border: 2px solid transparent; }
+        .topic-card:hover { transform: translateY(-5px); border-color: #3949ab; background: #fff; }
+        .sql-editor { background: #1e1e1e; color: #ce9178; font-family: 'Consolas', monospace; border-radius: 8px; padding: 15px; }
+        .audit-item { border-left: 4px solid #dee2e6; padding-left: 15px; margin-bottom: 15px; }
+        .audit-correct { border-color: #22c55e; background: #f0fdf4; }
+        .audit-wrong { border-color: #ef4444; background: #fef2f2; }
+        .test-group-header { cursor: pointer; background: #fff; transition: 0.2s; }
+        .test-group-header:hover { background: #f1f5f9; }
+
+        /* Стили Ачивок */
+        .ach-card { text-align: center; border: 1px solid #eee; border-radius: 10px; padding: 15px; transition: 0.2s; }
+        .ach-icon { font-size: 2.5rem; display: block; margin-bottom: 10px; }
+        .ach-locked { opacity: 0.4; filter: grayscale(100%); }
+        .ach-unlocked:hover { cursor: pointer; border-color: #ffd700; transform: scale(1.05); box-shadow: 0 4px 10px rgba(255,215,0,0.2); }
+        .user-avatar { font-size: 4rem; display: inline-block; background: #e8eaf6; border-radius: 50%; width: 100px; height: 100px; line-height: 100px; text-align: center; border: 3px solid var(--primary); }
+
+        .rank-1 { color: #ffd700; font-size: 1.5rem; }
+        .rank-2 { color: #c0c0c0; font-size: 1.4rem; }
+        .rank-3 { color: #cd7f32; font-size: 1.3rem; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark sticky-top mb-4">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="javascript:void(0)" onclick="location.reload()">ANALYST <span class="badge bg-warning text-dark">LMS</span></a>
+        <div class="d-flex align-items-center text-white" id="nav-info" style="display:none !important">
+            <button class="btn btn-warning btn-sm me-3 fw-bold shadow-sm" onclick="showLeaderboard()">🏆 Рейтинг</button>
+            <span id="nav-user" class="me-3 fw-bold border-end pe-3"></span>
+            <button class="btn btn-outline-light btn-sm ms-2" onclick="logout()">Выход</button>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    <!-- 1. ВХОД -->
+    <div id="screen-auth" class="screen active-screen">
+        <div class="row justify-content-center mt-5"><div class="col-md-4 card p-4">
+            <h3 class="text-center mb-4" id="atitle">Вход в систему</h3>
+            <input type="text" id="username" class="form-control mb-2" placeholder="Логин">
+            <input type="password" id="password" class="form-control mb-3" placeholder="Пароль">
+            <button class="btn btn-primary w-100 mb-3" onclick="handleAuth()">Войти</button>
+            <a href="javascript:void(0)" class="d-block text-center small text-muted" onclick="isLogin=!isLogin; document.getElementById('atitle').innerText=isLogin?'Вход':'Регистрация'">Нет аккаунта? Регистрация</a>
+        </div></div>
+    </div>
+
+    <!-- 2. ТЕМЫ -->
+    <div id="screen-topics" class="screen">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h4 class="m-0 text-dark">Направления обучения</h4>
+            <button class="btn btn-primary shadow-sm" onclick="showProfile()"><i class="bi bi-person-circle me-2"></i>Личный кабинет</button>
+        </div>
+        <div id="topics-list" class="row"></div>
+    </div>
+
+    <!-- 3. СПИСОК ТЕСТОВ -->
+    <div id="screen-tests" class="screen">
+        <button class="btn btn-link mb-3 p-0 text-decoration-none" onclick="showScreen('screen-topics')">← К темам</button>
+        <h4 id="topic-disp-title" class="mb-4">Доступные тесты</h4>
+        <div id="tests-list" class="row"></div>
+    </div>
+
+    <!-- 4. ТЕСТ ИНТЕРФЕЙС -->
+    <div id="screen-active-test" class="screen">
+        <div class="card p-4">
+            <div class="d-flex justify-content-between mb-4 border-bottom pb-3">
+                <h4 id="at-title" class="m-0 text-primary">Тест</h4>
+                <div id="timer" class="timer">00:00</div>
+            </div>
+            <div id="questions-area"></div>
+            <button class="btn btn-danger btn-lg w-100 mt-4 shadow" onclick="if(confirm('Завершить тест?')) finishTest()">СДАТЬ ТЕСТ</button>
+        </div>
+    </div>
+
+    <!-- 5. ЛИЧНЫЙ КАБИНЕТ (РАСШИРЕННЫЙ) -->
+    <div id="screen-profile" class="screen">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <button class="btn btn-link p-0 text-decoration-none" onclick="showScreen('screen-topics')">← Назад к обучению</button>
+            <span class="text-muted small">ID: <span id="p-id"></span></span>
+        </div>
+
+        <div class="row">
+            <!-- Левая колонка (Инфа и настройки) -->
+            <div class="col-md-4">
+                <div class="card p-4 text-center mb-3 shadow-sm">
+                    <div id="p-avatar" class="user-avatar mx-auto mb-3 shadow-sm">👤</div>
+
+                    <div class="input-group mb-3 px-3">
+                        <input type="text" id="p-name-input" class="form-control text-center fw-bold" placeholder="Имя">
+                        <button class="btn btn-outline-primary" onclick="updateUsername()" title="Сохранить имя"><i class="bi bi-check-lg"></i></button>
+                    </div>
+
+                    <hr>
+                    <div class="text-muted small">Ваш рейтинг</div>
+                    <h1 id="p-score" class="fw-bold text-primary mt-2">0</h1>
+
+                    <div class="form-check form-switch text-start mt-4 bg-light p-2 rounded">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" id="privacy-switch" onchange="togglePrivacy()">
+                        <label class="form-check-label small" for="privacy-switch">Участвовать в публичном рейтинге</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Правая колонка (Ачивки и История) -->
+            <div class="col-md-8">
+                <!-- БЛОК АЧИВОК -->
+                <div class="card p-4 mb-3 shadow-sm">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="m-0">Ваши достижения</h5>
+                        <small class="text-muted" title="Кликните на полученную награду, чтобы сделать её своей аватаркой">ℹ️ Как сменить аватарку?</small>
+                    </div>
+                    <div id="p-achievements" class="row g-3"></div>
+                </div>
+
+                <!-- БЛОК ИСТОРИИ -->
+                <div class="card p-4 shadow-sm">
+                    <h5 class="mb-3">История прохождений</h5>
+                    <div id="p-history"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. ЛИДЕРБОРД -->
+    <div id="screen-leaderboard" class="screen">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h4 class="text-warning text-shadow"><i class="bi bi-trophy-fill"></i> Топ аналитиков компании</h4>
+            <button class="btn btn-outline-secondary" onclick="showScreen('screen-topics')">Закрыть</button>
+        </div>
+        <div class="card p-0 shadow-sm border-warning">
+            <table class="table table-hover m-0 align-middle">
+                <thead class="table-light"><tr><th class="ps-4">Ранг</th><th>Сотрудник</th><th>Рейтинг</th></tr></thead>
+                <tbody id="leaderboard-list"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 7. АДМИН ПАНЕЛЬ -->
+    <div id="screen-admin" class="screen">
+        <ul class="nav nav-tabs mb-4" id="adm-tabs">
+            <li class="nav-item"><button class="nav-link active" id="btn-adm-users" onclick="switchAdminTab('users')">👥 Статистика</button></li>
+            <li class="nav-item"><button class="nav-link" id="btn-adm-review" onclick="switchAdminTab('review')">📝 Проверка</button></li>
+            <li class="nav-item"><button class="nav-link" id="btn-adm-manage" onclick="switchAdminTab('manage')">⚙️ Управление</button></li>
+        </ul>
+
+        <!-- ТАБ СТАТИСТИКИ -->
+        <div id="adm-users" class="adm-tab">
+            <div class="card p-3"><table class="table table-hover align-middle"><thead><tr><th>Сотрудник</th><th>Рейтинг</th><th>Действие</th></tr></thead><tbody id="adm-users-list"></tbody></table></div>
+            <div id="adm-user-details" class="card p-4 mt-3 border-primary" style="display:none">
+                <div class="d-flex justify-content-between"><h6>Сессии: <span id="det-user-name" class="text-primary"></span></h6><button class="btn-close" onclick="document.getElementById('adm-user-details').style.display='none'"></button></div>
+                <div id="det-sessions-list" class="list-group my-3"></div>
+                <div id="det-audit-content"></div>
+            </div>
+        </div>
+
+        <!-- ТАБ ПРОВЕРКИ -->
+        <div id="adm-review" class="adm-tab" style="display:none"><div id="adm-pending"></div></div>
+
+        <!-- ТАБ УПРАВЛЕНИЯ -->
+        <div id="adm-manage" class="adm-tab" style="display:none">
+            <div class="card p-4 mb-4 bg-light">
+                <h6>Создать тест</h6>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-3"><select id="mt-topic" class="form-select"></select></div>
+                    <div class="col-md-5"><input id="mt-title" class="form-control" placeholder="Название"></div>
+                    <div class="col-md-2"><input id="mt-time" type="number" class="form-control" placeholder="Мин" value="15"></div>
+                    <div class="col-md-2"><button class="btn btn-success w-100" onclick="createTest()">Создать</button></div>
+                </div>
+            </div>
+            <div id="adm-all-tests" class="row"></div>
+        </div>
+    </div>
+</div>
+
+<!-- МОДАЛКА ВОПРОСОВ -->
+<div class="modal fade" id="qModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content p-4">
+    <h5 id="modal-q-title">Вопрос</h5>
+    <input type="hidden" id="mq-id"><input type="hidden" id="mq-test-id">
+    <div class="row mb-2">
+        <div class="col-md-8"><label class="small">Тип</label><select id="mq-type" class="form-select"><option value="TEST">Тест (Выбор)</option><option value="SQL">SQL</option><option value="OPEN">Открытый</option></select></div>
+        <div class="col-md-4"><label class="small">Баллы</label><input id="mq-pts" type="number" class="form-control" value="10"></div>
+    </div>
+    <textarea id="mq-text" class="form-control mb-2" rows="3" placeholder="Текст вопроса"></textarea>
+    <input id="mq-opts" class="form-control mb-2" placeholder="Варианты через ; (A;B;C)">
+    <input id="mq-ans" class="form-control mb-3" placeholder="Правильный ответ">
+    <button class="btn btn-primary" onclick="saveQuestion()">Сохранить</button>
+</div></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    let token = localStorage.getItem('token'), role = localStorage.getItem('role'), isLogin = true, tInt, curSid;
+    const authH = () => ({'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'});
+
+    function showScreen(id) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
+        document.getElementById(id).classList.add('active-screen');
+        if(token) document.getElementById('nav-info').style.setProperty('display', 'flex', 'important');
+    }
+
+    async function handleAuth() {
+        const u = document.getElementById('username').value, p = document.getElementById('password').value;
+        const res = await fetch(isLogin ? '/api/login' : '/api/register', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username: u, password: p}) });
+        if(res.ok) {
+            if(isLogin) {
+                const d = await res.json();
+                localStorage.setItem('token', d.token); localStorage.setItem('role', d.role); localStorage.setItem('username', d.username);
+                location.reload();
+            } else { alert('Регистрация успешна!'); location.reload(); }
+        } else alert('Ошибка доступа');
+    }
+
+    async function loadTopics() {
+        const res = await fetch('/api/protected/topics', { headers: authH() });
+        const data = await res.json();
+        const list = document.getElementById('topics-list');
+        if(list) list.innerHTML = data.map(t => `<div class="col-md-4 mb-3" onclick="loadTests(${t.id}, '${t.title}')"><div class="card p-4 text-center topic-card"><h5 class="m-0 text-primary">${t.title}</h5></div></div>`).join('');
+        const sel = document.getElementById('mt-topic');
+        if(sel) sel.innerHTML = data.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
+    }
+
+    async function loadTests(tid, title) {
+        document.getElementById('topic-disp-title').innerText = 'Тесты по теме: ' + title;
+        const res = await fetch(`/api/protected/tests?topicId=${tid}`, { headers: authH() });
+        const data = await res.json();
+        document.getElementById('tests-list').innerHTML = data.map(t => `<div class="col-md-6 mb-3"><div class="card p-3 d-flex flex-row justify-content-between align-items-center"><span><b>${t.title}</b><br><small class="text-muted">Лимит: ${t.timeLimit} мин</small></span><button class="btn btn-primary btn-sm px-4" onclick="startTest(${t.id}, ${t.timeLimit}, '${t.title}')">Начать</button></div></div>`).join('') || '<p class="text-muted">Здесь пока пусто.</p>';
+        showScreen('screen-tests');
+    }
+
+    async function startTest(id, limit, title) {
+        const res = await fetch(`/api/protected/test/${id}/start`, { headers: authH() });
+        if(!res.ok) return alert('Попытки исчерпаны');
+        const data = await res.json(); curSid = data.sessionId;
+        document.getElementById('at-title').innerText = title;
+        document.getElementById('questions-area').innerHTML = data.questions.map((q, i) => `<div class="mb-4 border-bottom pb-3"><p class="fw-bold">${i+1}. ${q.text}</p>${q.type==='TEST' ? q.options.split(';').map(o => `<div class="form-check"><input class="form-check-input" type="radio" name="q-${q.id}" value="${o}"> <label class="form-check-label">${o}</label></div>`).join('') : `<textarea class="form-control ${q.type==='SQL'?'sql-editor':''}" rows="3" id="ans-${q.id}"></textarea>`}</div>`).join('');
+        showScreen('screen-active-test');
+        let s = limit * 60;
+        tInt = setInterval(() => { document.getElementById('timer').innerText = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; if(s-- <= 0) { clearInterval(tInt); finishTest(); } }, 1000);
+    }
+
+    async function finishTest() {
+        clearInterval(tInt);
+        const ans = {};
+        document.querySelectorAll('[id^="ans-"]').forEach(el => ans[el.id.split('-')[1]] = el.value);
+        document.querySelectorAll('input[type="radio"]:checked').forEach(el => ans[el.name.split('-')[1]] = el.value);
+        await fetch(`/api/protected/session/${curSid}/submit`, { method: 'POST', headers: authH(), body: JSON.stringify(ans) });
+        alert('Работа сдана на проверку!'); location.reload();
+    }
+
+    // --- ПРОФИЛЬ, НАГРАДЫ, НАСТРОЙКИ ---
+    async function showProfile() {
+        const res = await fetch('/api/protected/profile', { headers: authH() });
+        const d = await res.json();
+
+        document.getElementById('p-id').innerText = d.user.id;
+        document.getElementById('p-name-input').value = d.user.username;
+        document.getElementById('p-score').innerText = d.user.totalScore;
+        document.getElementById('p-avatar').innerText = d.user.avatarIcon || '👤';
+        document.getElementById('privacy-switch').checked = d.isPublic;
+
+        // Рендер каталога ачивок
+        document.getElementById('p-achievements').innerHTML = d.achievements.map(a => `
+            <div class="col-md-4 mb-2">
+                <div class="ach-card ${a.earned ? 'ach-unlocked bg-white' : 'ach-locked bg-light'}"
+                     ${a.earned ? `onclick="setAvatar('${a.icon}')"` : ''} title="${a.description}">
+                    <span class="ach-icon">${a.icon}</span>
+                    <strong class="d-block small lh-1 mb-1">${a.name}</strong>
+                    <small class="text-muted" style="font-size:0.7rem">${a.description}</small>
+                </div>
+            </div>
+        `).join('');
+
+        // Рендер истории сессий
+        const hl = document.getElementById('p-history');
+        if(d.sessions && d.sessions.length > 0) {
+            const groups = {};
+            d.sessions.forEach(s => {
+                if(!groups[s.testId]) groups[s.testId] = { name: s.testName, attempts: [], maxScore: 0 };
+                groups[s.testId].attempts.push(s);
+                if(s.status === 'COMPLETED' && s.score > groups[s.testId].maxScore) groups[s.testId].maxScore = s.score;
+            });
+            hl.innerHTML = `<div class="alert alert-primary small py-2"><i class="bi bi-info-circle me-1"></i>В рейтинг засчитывается только лучший результат по тесту.</div>` + Object.keys(groups).map(tid => {
+                const g = groups[tid];
+                return `<div class="card mb-3 border">
+                    <div class="card-header test-group-header d-flex justify-content-between align-items-center" onclick="document.getElementById('group-${tid}').style.display = document.getElementById('group-${tid}').style.display === 'none' ? 'block' : 'none'">
+                        <span class="fw-bold text-dark"><i class="bi bi-folder2-open me-2 text-primary"></i> ${g.name}</span>
+                        <span class="badge bg-primary">Лучший: ${g.maxScore} б. <i class="bi bi-chevron-down ms-1"></i></span>
+                    </div>
+                    <div id="group-${tid}" class="card-body p-0" style="display:none">
+                        ${g.attempts.map(s => `<div class="p-3 border-bottom d-flex justify-content-between align-items-center bg-white"><div><small class="text-muted">Попытка ID: ${s.id}</small><br><span class="small">${s.submittedAt}</span></div><div class="text-end"><span class="badge ${s.status==='COMPLETED'?'bg-success':'bg-warning'} mb-1">${s.status==='COMPLETED' ? s.score + ' б.' : 'На проверке'}</span><br><button class="btn btn-link btn-sm p-0 text-decoration-none" onclick="loadUserAudit(${s.id}, true)">Смотреть ответы</button></div></div><div id="u-audit-${s.id}" class="p-3 bg-light border-bottom" style="display:none"></div>`).join('')}
+                    </div>
+                </div>`;
+            }).join('');
+        } else { hl.innerHTML = '<p class="text-muted text-center py-4">Вы еще не проходили тесты.</p>'; }
+        showScreen('screen-profile');
+    }
+
+    async function updateUsername() {
+        const newName = document.getElementById('p-name-input').value;
+        const res = await fetch('/api/protected/profile/update', { method: 'POST', headers: authH(), body: JSON.stringify({ username: newName }) });
+        if(res.ok) {
+            const data = await res.json();
+            localStorage.setItem('token', data.newToken); // Сохраняем новый токен
+            localStorage.setItem('username', data.username);
+            document.getElementById('nav-user').innerText = data.username;
+            alert("Имя успешно изменено!");
+        } else { alert("Ошибка смены имени (возможно, оно уже занято)."); }
+    }
+
+    async function setAvatar(icon) {
+        if(!confirm("Установить это достижение как вашу аватарку?")) return;
+        await fetch('/api/protected/profile/update', { method: 'POST', headers: authH(), body: JSON.stringify({ avatar: icon }) });
+        document.getElementById('p-avatar').innerText = icon;
+    }
+
+    async function togglePrivacy() {
+        const isPub = document.getElementById('privacy-switch').checked;
+        await fetch('/api/protected/profile/privacy', { method: 'POST', headers: authH(), body: JSON.stringify({ isPublic: isPub }) });
+    }
+
+    async function showLeaderboard() {
+        const res = await fetch('/api/protected/leaderboard', { headers: authH() });
+        const data = await res.json();
+        document.getElementById('leaderboard-list').innerHTML = data.map(u => `<tr>
+            <td class="ps-4 fw-bold rank-${u.rank}">${u.rank <= 3 ? ['🥇','🥈','🥉'][u.rank-1] : u.rank}</td>
+            <td><span class="me-2 fs-5">${u.avatar || '👤'}</span> <b>${u.username}</b></td>
+            <td class="fw-bold text-primary fs-5">${u.score}</td>
+        </tr>`).join('') || '<tr><td colspan="3" class="text-center text-muted py-4">Рейтинг пуст</td></tr>';
+        showScreen('screen-leaderboard');
+    }
+
+    // --- АДМИНКА ---
+    function switchAdminTab(t) {
+        document.querySelectorAll('.adm-tab').forEach(el => el.style.display = 'none');
+        document.getElementById('adm-' + t).style.display = 'block';
+        document.querySelectorAll('#adm-tabs .nav-link').forEach(l => l.classList.remove('active'));
+        document.getElementById('btn-adm-' + t).classList.add('active');
+        if(t === 'users') loadAdmUsers();
+        if(t === 'review') loadAdmPending();
+        if(t === 'manage') loadAdmManage();
+    }
+
+    async function loadAdmUsers() {
+        const res = await fetch('/api/protected/admin/users', { headers: authH() });
+        const users = await res.json();
+        document.getElementById('adm-users-list').innerHTML = users.map(u => `<tr><td><span class="fs-5 me-2">${u.avatarIcon||'👤'}</span> <b>${u.username}</b></td><td><span class="badge bg-primary fs-6">${u.totalScore}</span></td><td><button class="btn btn-sm btn-outline-primary" onclick="loadUserAuditAdm(${u.id}, '${u.username}')">Статистика</button></td></tr>`).join('');
+    }
+
+    async function loadUserAuditAdm(uid, name) {
+        document.getElementById('det-user-name').innerText = name;
+        const res = await fetch(`/api/protected/admin/user/${uid}/sessions`, { headers: authH() });
+        const sess = await res.json();
+        document.getElementById('det-sessions-list').innerHTML = sess.map(s => `<button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" onclick="loadUserAudit(${s.id}, false)"><span>${s.testName}<br><small class="text-muted">${s.submittedAt}</small></span><span class="badge bg-secondary">${s.score} б.</span></button>`).join('');
+        document.getElementById('adm-user-details').style.display = 'block';
+        document.getElementById('det-audit-content').innerHTML = '';
+    }
+
+    async function loadUserAudit(sid, isUser) {
+        const res = await fetch(isUser ? `/api/protected/profile/session/${sid}` : `/api/protected/admin/session/${sid}/details`, { headers: authH() });
+        const data = await res.json();
+        const cont = isUser ? document.getElementById(`u-audit-${sid}`) : document.getElementById('det-audit-content');
+        if(cont.style.display === 'block' && isUser) { cont.style.display = 'none'; return; }
+        cont.innerHTML = `<h6 class="mb-3 text-muted">Детализация:</h6>` + data.map(d => `
+            <div class="audit-item ${d.isCorrect ? 'audit-correct':'audit-wrong'} small p-3 rounded">
+                <b>${d.question}</b><br>
+                Ответ: <span class="fw-bold">${d.userAnswer || 'нет ответа'}</span> <br>
+                ${d.points === -1 ? '<span class="text-warning"><i class="bi bi-clock-history"></i> Ждет ручной проверки</span>' : `<span class="text-success"><i class="bi bi-check-circle"></i> Эталон: ${d.expected || 'не указан'}</span>`}
+            </div>`).join('');
+        cont.style.display = 'block';
+    }
+
+    async function loadAdmPending() {
+        const res = await fetch('/api/protected/admin/pending', { headers: authH() });
+        const data = await res.json();
+        document.getElementById('adm-pending').innerHTML = data.map(i => `<div class="card p-4 mb-3 border-start border-4 border-warning shadow-sm"><b><i class="bi bi-person"></i> ${i.username} | ${i.testTitle}</b><hr class="my-2"><p class="mb-2">${i.questionText}</p><div class="bg-light p-3 mb-2 rounded border font-monospace">${i.userAnswer}</div><div class="text-success small fw-bold mb-3">Эталон: ${i.expectedAnswer}</div><div class="d-flex gap-2"><button class="btn btn-success flex-grow-1" onclick="grade(${i.answerId}, ${i.maxPoints})">✅ ВЕРНО</button><button class="btn btn-danger flex-grow-1" onclick="grade(${i.answerId}, 0)">❌ НЕВЕРНО</button></div></div>`).join('') || '<div class="alert alert-success text-center mt-5"><i class="bi bi-check-circle fs-4 d-block mb-2"></i>Все работы проверены!</div>';
+    }
+
+    async function grade(aid, p) { await fetch('/api/protected/admin/grade', { method: 'POST', headers: authH(), body: JSON.stringify({answerId: aid, points: p}) }); loadAdmPending(); }
+
+    async function loadAdmManage() {
+        const res = await fetch('/api/protected/admin/all-tests', { headers: authH() });
+        const tests = await res.json();
+        document.getElementById('adm-all-tests').innerHTML = tests.map(t => `<div class="col-md-6 mb-3"><div class="card p-3 shadow-sm h-100 border-start border-4 border-primary"><div class="d-flex justify-content-between align-items-start"><div><b>${t.title}</b><br><span class="badge bg-secondary mb-2">${t.topic}</span></div><div class="btn-group"><button class="btn btn-sm btn-outline-primary" onclick="toggleQ(${t.id})">Вопросы</button><button class="btn btn-sm btn-outline-danger" onclick="delTest(${t.id})"><i class="bi bi-trash"></i></button></div></div><div id="qlist-${t.id}" class="mt-3 bg-light p-2 rounded shadow-inner" style="display:none"></div></div></div>`).join('');
+    }
+
+    async function toggleQ(tid) {
+        const div = document.getElementById('qlist-' + tid);
+        if (div.style.display === 'block') { div.style.display = 'none'; return; }
+        const res = await fetch(`/api/protected/admin/test/${tid}/questions`, { headers: authH() });
+        const qs = await res.json();
+        div.innerHTML = `<button class="btn btn-sm btn-success mb-2 w-100" onclick="openQM(${tid})">+ Новый вопрос</button>` + qs.map(q => `<div class="d-flex justify-content-between align-items-center border-bottom py-2 small bg-white px-2 rounded mb-1"><span class="text-truncate" style="max-width: 65%;" title="${q.text}">${q.text}</span><div class="ms-2" style="white-space: nowrap;"><i class="bi bi-pencil-square text-primary me-2" style="cursor:pointer" onclick='editQ(${JSON.stringify(q).replace(/"/g, '&quot;')})'></i><i class="bi bi-trash text-danger" style="cursor:pointer" onclick="delQ(${q.id})"></i></div></div>`).join('');
+        div.style.display = 'block';
+    }
+
+    function openQM(tid) { document.getElementById('mq-id').value = ''; document.getElementById('mq-test-id').value = tid; document.getElementById('mq-text').value = ''; document.getElementById('mq-opts').value = ''; document.getElementById('mq-ans').value = ''; document.getElementById('modal-q-title').innerText = 'Новый вопрос'; new bootstrap.Modal(document.getElementById('qModal')).show(); }
+    function editQ(q) { document.getElementById('mq-id').value = q.id; document.getElementById('mq-test-id').value = q.testId; document.getElementById('mq-type').value = q.type; document.getElementById('mq-text').value = q.text; document.getElementById('mq-opts').value = q.options || ''; document.getElementById('mq-ans').value = q.correctAnswer; document.getElementById('mq-pts').value = q.points; document.getElementById('modal-q-title').innerText = 'Правка вопроса'; new bootstrap.Modal(document.getElementById('qModal')).show(); }
+
+    async function saveQuestion() {
+        const id = document.getElementById('mq-id').value, b = { testId: parseInt(document.getElementById('mq-test-id').value), type: document.getElementById('mq-type').value, text: document.getElementById('mq-text').value, options: document.getElementById('mq-opts').value, answer: document.getElementById('mq-ans').value, points: parseInt(document.getElementById('mq-pts').value) };
+        await fetch(id ? `/api/protected/admin/question/${id}/update` : '/api/protected/admin/question', { method: 'POST', headers: authH(), body: JSON.stringify(b) }); location.reload();
+    }
+
+    async function delQ(qid) { if(confirm('Удалить вопрос?')) { await fetch(`/api/protected/admin/question/${qid}`, {method:'DELETE', headers:authH()}); location.reload(); } }
+    async function delTest(id) { if(confirm('Удалить тест?')) { await fetch(`/api/protected/admin/test/${id}`, {method:'DELETE', headers:authH()}); loadAdmManage(); } }
+    async function createTest() {
+        const b = { topicId: parseInt(document.getElementById('mt-topic').value), title: document.getElementById('mt-title').value, time: parseInt(document.getElementById('mt-time').value)||15, attempts: 3 };
+        await fetch('/api/protected/admin/test', { method: 'POST', headers: authH(), body: JSON.stringify(b) }); loadAdmManage();
+    }
+
+    function logout() { localStorage.clear(); location.reload(); }
+
+    if(token) {
+        document.getElementById('nav-user').innerText = localStorage.getItem('username');
+        loadTopics();
+        if(role === 'ADMIN') { showScreen('screen-admin'); switchAdminTab('users'); }
+        else showScreen('screen-topics');
+    }
+</script>
+</body>
+</html>
