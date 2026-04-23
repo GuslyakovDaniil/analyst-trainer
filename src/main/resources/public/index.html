@@ -140,7 +140,7 @@
     <div id="screen-leaderboard" class="screen">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h4 class="text-warning text-shadow"><i class="bi bi-trophy-fill"></i> Топ аналитиков компании</h4>
-            <button class="btn btn-outline-secondary" onclick="showScreen('screen-topics')">Закрыть</button>
+            <button class="btn btn-outline-secondary" onclick="closeLeaderboard()">Закрыть</button>
         </div>
         <div class="card p-0 shadow-sm border-warning">
             <table class="table table-hover m-0 align-middle">
@@ -191,14 +191,38 @@
 <div class="modal fade" id="qModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content p-4">
     <h5 id="modal-q-title">Вопрос</h5>
     <input type="hidden" id="mq-id"><input type="hidden" id="mq-test-id">
-    <div class="row mb-2">
-        <div class="col-md-8"><label class="small">Тип</label><select id="mq-type" class="form-select"><option value="TEST">Тест (Выбор)</option><option value="SQL">SQL</option><option value="OPEN">Открытый</option></select></div>
-        <div class="col-md-4"><label class="small">Баллы</label><input id="mq-pts" type="number" class="form-control" value="10"></div>
+    <div class="row mb-3">
+        <div class="col-md-8">
+            <label class="small fw-bold">Тип задания</label>
+            <select id="mq-type" class="form-select" onchange="toggleBugToolbar()">
+                <option value="TEST">Тестовое (Один/Несколько вариантов)</option>
+                <option value="BUG">Поиск ошибок (Выпадающие списки)</option>
+                <option value="OPEN">Открытое задание</option>
+                <option value="SQL">SQL</option>
+            </select>
+        </div>
+        <div class="col-md-4"><label class="small fw-bold">Баллы</label><input id="mq-pts" type="number" class="form-control" value="10"></div>
     </div>
-    <textarea id="mq-text" class="form-control mb-2" rows="3" placeholder="Текст вопроса"></textarea>
-    <input id="mq-opts" class="form-control mb-2" placeholder="Варианты через ; (A;B;C)">
-    <input id="mq-ans" class="form-control mb-3" placeholder="Правильный ответ">
-    <button class="btn btn-primary" onclick="saveQuestion()">Сохранить</button>
+
+    <!-- НОВАЯ ПАНЕЛЬ ДЛЯ АДМИНА -->
+    <div id="bug-toolbar" class="mb-2 p-2 bg-light border rounded" style="display:none;">
+        <button class="btn btn-sm btn-primary fw-bold shadow-sm" type="button" onclick="wrapDropdown()">
+            <i class="bi bi-magic"></i> Создать пропуск из выделенного
+        </button>
+        <small class="text-muted ms-2 d-block d-md-inline mt-2 mt-md-0">Выделите <b>правильное</b> слово в тексте и нажмите кнопку</small>
+    </div>
+
+    <textarea id="mq-text" class="form-control mb-2" rows="4" placeholder="Текст вопроса" oninput="if(document.getElementById('mq-type').value==='BUG') updateBugCorrectAnswer()"></textarea>
+
+    <div id="opts-container">
+        <label class="small text-muted">Варианты (Только для типа ТЕСТ)</label>
+        <input id="mq-opts" class="form-control mb-2" placeholder="Варианты через ; (A;B;C)">
+    </div>
+
+    <label class="small text-muted" id="ans-label">Правильный ответ</label>
+    <input id="mq-ans" class="form-control mb-3" placeholder="Укажите правильный ответ">
+
+    <button class="btn btn-success w-100 fw-bold" onclick="saveQuestion()">Сохранить задание</button>
 </div></div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -242,21 +266,69 @@
     }
 
     async function startTest(id, limit, title) {
-        const res = await fetch(`/api/protected/test/${id}/start`, { headers: authH() });
-        if(!res.ok) return alert('Попытки исчерпаны');
-        const data = await res.json(); curSid = data.sessionId;
-        document.getElementById('at-title').innerText = title;
-        document.getElementById('questions-area').innerHTML = data.questions.map((q, i) => `<div class="mb-4 border-bottom pb-3"><p class="fw-bold">${i+1}. ${q.text}</p>${q.type==='TEST' ? q.options.split(';').map(o => `<div class="form-check"><input class="form-check-input" type="radio" name="q-${q.id}" value="${o}"> <label class="form-check-label">${o}</label></div>`).join('') : `<textarea class="form-control ${q.type==='SQL'?'sql-editor':''}" rows="3" id="ans-${q.id}"></textarea>`}</div>`).join('');
-        showScreen('screen-active-test');
-        let s = limit * 60;
-        tInt = setInterval(() => { document.getElementById('timer').innerText = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; if(s-- <= 0) { clearInterval(tInt); finishTest(); } }, 1000);
-    }
+            const res = await fetch(`/api/protected/test/${id}/start`, { headers: authH() });
+            if(!res.ok) return alert('Попытки исчерпаны');
+            const data = await res.json(); curSid = data.sessionId;
+            document.getElementById('at-title').innerText = title;
+
+            document.getElementById('questions-area').innerHTML = data.questions.map((q, i) => {
+                let innerHTML = '';
+                if (q.type === 'TEST') {
+                    innerHTML = q.options.split(';').map(o => `
+                        <div class="form-check">
+                            <input class="form-check-input" type="${q.correctAnswer.includes(';') ? 'checkbox' : 'radio'}" name="q-${q.id}" value="${o}">
+                            <label class="form-check-label">${o}</label>
+                        </div>`).join('');
+                } else if (q.type === 'BUG') {
+                    // Превращаем [dropdown:A;B;C] в <select>
+                    let bugText = q.text.replace(/\[dropdown:(.*?)\]/g, (match, optsStr) => {
+                        let options = optsStr.split(';').map(o => `<option value="${o}">${o}</option>`).join('');
+                        return `<select class="form-select d-inline-block w-auto mx-1 shadow-sm bug-select-${q.id}" style="background-color: #e3f2fd;"><option value="">--выбрать--</option>${options}</select>`;
+                    });
+                    return `<div class="mb-4 border-bottom pb-3"><p class="fw-bold lh-lg">${i+1}. ${bugText}</p></div>`;
+                } else {
+                    innerHTML = `<textarea class="form-control ${q.type==='SQL'?'sql-editor':''}" rows="3" id="ans-${q.id}" placeholder="Ваш развернутый ответ..."></textarea>`;
+                }
+                return q.type === 'BUG' ? innerHTML : `<div class="mb-4 border-bottom pb-3"><p class="fw-bold">${i+1}. ${q.text}</p>${innerHTML}</div>`;
+            }).join('');
+
+            showScreen('screen-active-test');
+            let s = limit * 60;
+            tInt = setInterval(() => { document.getElementById('timer').innerText = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; if(s-- <= 0) { clearInterval(tInt); finishTest(); } }, 1000);
+        }
 
     async function finishTest() {
         clearInterval(tInt);
         const ans = {};
+
+        // Сбор текста (OPEN)
         document.querySelectorAll('[id^="ans-"]').forEach(el => ans[el.id.split('-')[1]] = el.value);
+
+        // Сбор радиокнопок (TEST - один ответ)
         document.querySelectorAll('input[type="radio"]:checked').forEach(el => ans[el.name.split('-')[1]] = el.value);
+
+        // Сбор чекбоксов (TEST - несколько ответов)
+        document.querySelectorAll('input[type="checkbox"]:checked').forEach(el => {
+            const qId = el.name.split('-')[1];
+            ans[qId] = ans[qId] ? ans[qId] + ';' + el.value : el.value;
+        });
+
+        // Сбор выпадающих списков (BUG)
+        // Ищем все select'ы, группируем их по id вопроса и склеиваем через ';'
+        const bugSelects = document.querySelectorAll('select[class*="bug-select-"]');
+        let bugAnswers = {};
+        bugSelects.forEach(sel => {
+            const match = sel.className.match(/bug-select-(\d+)/);
+            if (match) {
+                const qId = match[1];
+                if (!bugAnswers[qId]) bugAnswers[qId] = [];
+                bugAnswers[qId].push(sel.value);
+            }
+        });
+        for (let qId in bugAnswers) {
+            ans[qId] = bugAnswers[qId].join(';'); // Сохраняем в виде "Я как аналитик хочу;быстрее формировать отчеты"
+        }
+
         await fetch(`/api/protected/session/${curSid}/submit`, { method: 'POST', headers: authH(), body: JSON.stringify(ans) });
         alert('Работа сдана на проверку!'); location.reload();
     }
@@ -406,8 +478,29 @@
         div.style.display = 'block';
     }
 
-    function openQM(tid) { document.getElementById('mq-id').value = ''; document.getElementById('mq-test-id').value = tid; document.getElementById('mq-text').value = ''; document.getElementById('mq-opts').value = ''; document.getElementById('mq-ans').value = ''; document.getElementById('modal-q-title').innerText = 'Новый вопрос'; new bootstrap.Modal(document.getElementById('qModal')).show(); }
-    function editQ(q) { document.getElementById('mq-id').value = q.id; document.getElementById('mq-test-id').value = q.testId; document.getElementById('mq-type').value = q.type; document.getElementById('mq-text').value = q.text; document.getElementById('mq-opts').value = q.options || ''; document.getElementById('mq-ans').value = q.correctAnswer; document.getElementById('mq-pts').value = q.points; document.getElementById('modal-q-title').innerText = 'Правка вопроса'; new bootstrap.Modal(document.getElementById('qModal')).show(); }
+    function openQM(tid) {
+        document.getElementById('mq-id').value = '';
+        document.getElementById('mq-test-id').value = tid;
+        document.getElementById('mq-text').value = '';
+        document.getElementById('mq-opts').value = '';
+        document.getElementById('mq-ans').value = '';
+        document.getElementById('modal-q-title').innerText = 'Новый вопрос';
+        toggleBugToolbar(); // Вызываем переключатель
+        new bootstrap.Modal(document.getElementById('qModal')).show();
+    }
+
+    function editQ(q) {
+        document.getElementById('mq-id').value = q.id;
+        document.getElementById('mq-test-id').value = q.testId;
+        document.getElementById('mq-type').value = q.type;
+        document.getElementById('mq-text').value = q.text;
+        document.getElementById('mq-opts').value = q.options || '';
+        document.getElementById('mq-ans').value = q.correctAnswer;
+        document.getElementById('mq-pts').value = q.points;
+        document.getElementById('modal-q-title').innerText = 'Правка вопроса';
+        toggleBugToolbar(); // Вызываем переключатель
+        new bootstrap.Modal(document.getElementById('qModal')).show();
+    }
 
     async function saveQuestion() {
         const id = document.getElementById('mq-id').value, b = { testId: parseInt(document.getElementById('mq-test-id').value), type: document.getElementById('mq-type').value, text: document.getElementById('mq-text').value, options: document.getElementById('mq-opts').value, answer: document.getElementById('mq-ans').value, points: parseInt(document.getElementById('mq-pts').value) };
@@ -428,6 +521,69 @@
         loadTopics();
         if(role === 'ADMIN') { showScreen('screen-admin'); switchAdminTab('users'); }
         else showScreen('screen-topics');
+    }
+
+    function closeLeaderboard() {
+    if (role === 'ADMIN') {
+        showScreen('screen-admin');
+    } else {
+        showScreen('screen-topics');
+    }
+}
+
+    // --- ВИЗУАЛЬНЫЙ РЕДАКТОР ДЛЯ ПОИСКА ОШИБОК ---
+    function toggleBugToolbar() {
+        const type = document.getElementById('mq-type').value;
+        const isBug = (type === 'BUG');
+
+        // Показываем магическую кнопку только для типа BUG
+        document.getElementById('bug-toolbar').style.display = isBug ? 'block' : 'none';
+
+        // Прячем поле "Варианты", так как в BUG они внутри текста
+        document.getElementById('opts-container').style.display = isBug ? 'none' : 'block';
+
+        // Блокируем ручной ввод правильного ответа для BUG (система соберет его сама)
+        document.getElementById('mq-ans').readOnly = isBug;
+        document.getElementById('ans-label').innerText = isBug ? 'Правильный ответ (Собирается автоматически)' : 'Правильный ответ';
+
+        if(isBug) updateBugCorrectAnswer();
+    }
+
+    function wrapDropdown() {
+        const textarea = document.getElementById('mq-text');
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+
+        if (start === end) {
+            alert("Сначала выделите правильное слово или фразу в тексте!");
+            return;
+        }
+
+        const selectedText = textarea.value.substring(start, end).trim();
+        const wrongOptions = prompt(`Создание списка.\n\nПравильный ответ: "${selectedText}"\n\nВведите НЕПРАВИЛЬНЫЕ варианты через точку с запятой (;):`);
+
+        if (wrongOptions !== null) { // Если админ не нажал "Отмена"
+            // Формируем тег: [dropdown:Правильный;Неправильный1;Неправильный2]
+            const dropdownTag = `[dropdown:${selectedText};${wrongOptions}]`;
+
+            // Вставляем тег обратно в текст
+            textarea.value = textarea.value.substring(0, start) + dropdownTag + textarea.value.substring(end);
+
+            // Автоматически обновляем скрытое поле с правильным ответом для БД
+            updateBugCorrectAnswer();
+
+            // Снимаем выделение
+            textarea.focus();
+            textarea.setSelectionRange(start + dropdownTag.length, start + dropdownTag.length);
+        }
+    }
+
+    function updateBugCorrectAnswer() {
+        // Парсим весь текст, находим все теги и вытаскиваем первые (правильные) значения
+        const text = document.getElementById('mq-text').value;
+        const matches = [...text.matchAll(/\[dropdown:(.*?)\]/g)];
+        const correctAnswers = matches.map(m => m[1].split(';')[0].trim());
+        document.getElementById('mq-ans').value = correctAnswers.join(';');
     }
 </script>
 </body>

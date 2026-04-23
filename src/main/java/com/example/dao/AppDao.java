@@ -75,7 +75,8 @@ public class AppDao {
     public void saveAnswer(int sessionId, int qId, String ans) throws SQLException {
         Question q = getQuestionById(qId);
         int initialPoints = (q != null && q.type().equals("OPEN")) ? -1 : 0;
-        try (Connection conn = DatabaseConfig.getConnection(); PreparedStatement ps = conn.prepareStatement("INSERT INTO test_answers (session_id, question_id, user_answer, earned_points) VALUES (?, ?, ?, ?)")) {
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement ps = conn.prepareStatement("INSERT INTO test_answers (session_id, question_id, user_answer, earned_points) VALUES (?, ?, ?, ?)")) {
             ps.setInt(1, sessionId); ps.setInt(2, qId); ps.setString(3, ans); ps.setInt(4, initialPoints);
             ps.executeUpdate();
         }

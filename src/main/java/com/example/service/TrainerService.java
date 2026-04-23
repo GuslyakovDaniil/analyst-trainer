@@ -17,15 +17,27 @@ public class TrainerService {
     public void processTestSubmission(int sessionId) throws SQLException {
         List<TestAnswer> answers = appDao.getAnswersBySession(sessionId);
         int autoScore = 0;
-        boolean hasOpenQuestions = false;
+        boolean hasManualCheck = false;
         boolean hasCorrectSql = false;
 
         for (TestAnswer ans : answers) {
             Question q = appDao.getQuestionById(ans.questionId());
             if (q.type().equals("OPEN")) {
-                hasOpenQuestions = true;
+                hasManualCheck = true;
             } else {
-                boolean correct = q.correctAnswer().trim().equalsIgnoreCase(ans.userAnswer().trim());
+                boolean correct = false;
+                String expected = q.correctAnswer() != null ? q.correctAnswer().trim() : "";
+                String actual = ans.userAnswer() != null ? ans.userAnswer().trim() : "";
+
+                if (q.type().equals("TEST") && expected.contains(";")) {
+                    java.util.Set<String> expSet = new java.util.HashSet<>(java.util.Arrays.asList(expected.toLowerCase().split(";")));
+                    java.util.Set<String> actSet = new java.util.HashSet<>(java.util.Arrays.asList(actual.toLowerCase().split(";")));
+                    correct = expSet.equals(actSet);
+                }
+                else {
+                    correct = expected.equalsIgnoreCase(actual);
+                }
+
                 int points = correct ? q.points() : 0;
                 appDao.updateAnswerGrading(ans.id(), correct, points);
                 autoScore += points;
@@ -33,7 +45,7 @@ public class TrainerService {
             }
         }
 
-        String status = hasOpenQuestions ? "PENDING" : "COMPLETED";
+        String status = hasManualCheck ? "PENDING" : "COMPLETED";
         appDao.closeSession(sessionId, autoScore, status);
 
         if (status.equals("COMPLETED")) {
