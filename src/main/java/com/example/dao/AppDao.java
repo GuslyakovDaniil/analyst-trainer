@@ -3,6 +3,7 @@ package com.example.dao;
 import com.example.config.DatabaseConfig;
 import com.example.model.*;
 import java.sql.*;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -109,12 +110,19 @@ public class AppDao {
     public List<TestSession> getUserSessions(int userId) throws SQLException {
         List<TestSession> list = new ArrayList<>();
         String sql = "SELECT ts.*, t.title as t_name FROM test_sessions ts JOIN tests t ON ts.test_id = t.id WHERE ts.user_id = ? ORDER BY ts.id DESC";
+        SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+
         try (Connection conn = DatabaseConfig.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, userId);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
-                String date = rs.getTimestamp("submitted_at") != null ? rs.getTimestamp("submitted_at").toString() : "В процессе";
-                list.add(new TestSession(rs.getInt("id"), rs.getInt("user_id"), rs.getInt("test_id"), rs.getString("status"), rs.getInt("score"), date, rs.getString("t_name")));
+                String dateStr = "Не завершен";
+                if (rs.getTimestamp("submitted_at") != null) {
+                    dateStr = sdf.format(rs.getTimestamp("submitted_at"));
+                } else if (rs.getTimestamp("started_at") != null) {
+                    dateStr = "Начато: " + sdf.format(rs.getTimestamp("started_at"));
+                }
+                list.add(new TestSession(rs.getInt("id"), rs.getInt("user_id"), rs.getInt("test_id"), rs.getString("status"), rs.getInt("score"), dateStr, rs.getString("t_name")));
             }
         }
         return list;
@@ -124,7 +132,17 @@ public class AppDao {
         List<Map<String, Object>> list = new ArrayList<>();
         String sql = "SELECT ta.id as answer_id, u.username, t.title, q.text, ta.user_answer, q.correct_answer, q.points FROM test_answers ta JOIN test_sessions ts ON ta.session_id = ts.id JOIN users u ON ts.user_id = u.id JOIN tests t ON ts.test_id = t.id JOIN questions q ON ta.question_id = q.id WHERE ts.status = 'PENDING' AND ta.earned_points = -1";
         try (Connection conn = DatabaseConfig.getConnection(); Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
-            while (rs.next()) list.add(Map.of("answerId", rs.getInt("answer_id"), "username", rs.getString("username"), "testTitle", rs.getString("title"), "questionText", rs.getString("text"), "userAnswer", rs.getString("user_answer"), "expectedAnswer", rs.getString("correct_answer"), "maxPoints", rs.getInt("points")));
+            while (rs.next()) {
+                list.add(Map.of(
+                        "answerId", rs.getInt("answer_id"),
+                        "username", rs.getString("username"),
+                        "testTitle", rs.getString("title"),
+                        "questionText", rs.getString("text"),
+                        "userAnswer", rs.getString("user_answer") != null ? rs.getString("user_answer") : "Ответ не дан",
+                        "expectedAnswer", rs.getString("correct_answer") != null ? rs.getString("correct_answer") : "Эталон не задан",
+                        "maxPoints", rs.getInt("points")
+                ));
+            }
         }
         return list;
     }
@@ -135,7 +153,15 @@ public class AppDao {
         try (Connection conn = DatabaseConfig.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, sessionId);
             ResultSet rs = ps.executeQuery();
-            while (rs.next()) list.add(Map.of("question", rs.getString("text"), "userAnswer", rs.getString("user_answer") != null ? rs.getString("user_answer") : "", "expected", rs.getString("correct_answer") != null ? rs.getString("correct_answer") : "", "isCorrect", rs.getBoolean("is_correct"), "points", rs.getInt("earned_points")));
+            while (rs.next()) {
+                list.add(Map.of(
+                        "question", rs.getString("text"),
+                        "userAnswer", rs.getString("user_answer") != null ? rs.getString("user_answer") : "Нет ответа",
+                        "expected", rs.getString("correct_answer") != null ? rs.getString("correct_answer") : "Эталон не задан",
+                        "isCorrect", rs.getBoolean("is_correct"),
+                        "points", rs.getInt("earned_points")
+                ));
+            }
         }
         return list;
     }

@@ -8,7 +8,6 @@ import com.example.service.TrainerService;
 import com.example.util.SecurityUtil;
 
 import java.util.Map;
-import java.util.List;
 
 public class AppController {
     private static final AppDao appDao = new AppDao();
@@ -40,8 +39,14 @@ public class AppController {
     public static void submitTest(Context ctx) throws Exception {
         int sid = Integer.parseInt(ctx.pathParam("id"));
         Map<String, String> answers = ctx.bodyAsClass(Map.class);
+
         for (Map.Entry<String, String> entry : answers.entrySet()) {
-            appDao.saveAnswer(sid, Integer.parseInt(entry.getKey()), entry.getValue());
+            try {
+                int qId = Integer.parseInt(entry.getKey());
+                appDao.saveAnswer(sid, qId, entry.getValue());
+            } catch (NumberFormatException e) {
+                System.err.println("Пропущен некорректный ID вопроса с фронтенда: " + entry.getKey());
+            }
         }
         trainerService.processTestSubmission(sid);
         ctx.json(Map.of("status", "ok"));
@@ -58,7 +63,7 @@ public class AppController {
         ctx.json(Map.of(
                 "user", user,
                 "sessions", appDao.getUserSessions(user.id()),
-                "achievements", userDao.getAllAchievementsWithStatus(user.id()), // Отдаем ВСЕ ачивки, чтобы показать каталог
+                "achievements", userDao.getAllAchievementsWithStatus(user.id()),
                 "isPublic", userDao.isUserPublic(user.id())
         ));
     }
@@ -82,7 +87,6 @@ public class AppController {
             String newName = body.get("username").trim();
             if (!newName.isEmpty()) {
                 userDao.updateUsername(user.id(), newName);
-                // Обновляем токен, так как имя пользователя изменилось
                 String newToken = SecurityUtil.generateToken(newName);
                 ctx.json(Map.of("newToken", newToken, "username", newName));
                 return;
@@ -99,6 +103,12 @@ public class AppController {
     public static void getAdminUsers(Context ctx) throws Exception {
         if (!isAdmin(ctx)) return;
         ctx.json(userDao.findAllUsers());
+    }
+
+    public static void makeAdmin(Context ctx) throws Exception {
+        if (!isAdmin(ctx)) return;
+        userDao.makeAdmin(Integer.parseInt(ctx.pathParam("id")));
+        ctx.status(200).result("Пользователь назначен администратором");
     }
 
     public static void getAdminPending(Context ctx) throws Exception {
@@ -124,7 +134,12 @@ public class AppController {
         ctx.json(appDao.getDetailedAnswers(Integer.parseInt(ctx.pathParam("id"))));
     }
 
-    // --- АДМИНСКОЕ API (УПРАВЛЕНИЕ ТЕСТАМИ) ---
+    public static void getUserAchievementsAdmin(Context ctx) throws Exception {
+        if (!isAdmin(ctx)) return;
+        ctx.json(userDao.getAllAchievementsWithStatus(Integer.parseInt(ctx.pathParam("id"))));
+    }
+
+    // --- АДМИНСКОЕ API (УПРАВЛЕНИЕ ТЕСТАМИ И АЧИВКАМИ) ---
     public static void getAdminAllTests(Context ctx) throws Exception {
         if (!isAdmin(ctx)) return;
         ctx.json(appDao.getAllTestsAdmin());
@@ -174,6 +189,50 @@ public class AppController {
         if (!isAdmin(ctx)) return;
         appDao.deleteQuestion(Integer.parseInt(ctx.pathParam("id")));
         ctx.status(204);
+    }
+
+    // CRUD для Ачивок
+    public static void getAchievementsDict(Context ctx) throws Exception {
+        if (!isAdmin(ctx)) return;
+        ctx.json(userDao.getAchievementsDict());
+    }
+
+    @SuppressWarnings("unchecked")
+    public static void createAchievement(Context ctx) throws Exception {
+        if (!isAdmin(ctx)) return;
+        Map<String, Object> b = ctx.bodyAsClass(Map.class);
+        userDao.createAchievement((String)b.get("name"), (String)b.get("icon"), (String)b.get("description"));
+        ctx.status(201).result("Ачивка создана");
+    }
+
+    @SuppressWarnings("unchecked")
+    public static void updateAchievement(Context ctx) throws Exception {
+        if (!isAdmin(ctx)) return;
+        Map<String, Object> b = ctx.bodyAsClass(Map.class);
+        userDao.updateAchievement(Integer.parseInt(ctx.pathParam("id")), (String)b.get("name"), (String)b.get("icon"), (String)b.get("description"));
+        ctx.status(200).result("Ачивка обновлена");
+    }
+
+    public static void deleteAchievement(Context ctx) throws Exception {
+        if (!isAdmin(ctx)) return;
+        userDao.deleteAchievement(Integer.parseInt(ctx.pathParam("id")));
+        ctx.status(204);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static void grantAchievementManual(Context ctx) throws Exception {
+        if (!isAdmin(ctx)) return;
+        Map<String, Object> body = ctx.bodyAsClass(Map.class);
+        userDao.awardAchievement(Integer.parseInt(ctx.pathParam("id")), (String) body.get("name"));
+        ctx.status(200).result("Ачивка выдана");
+    }
+
+    @SuppressWarnings("unchecked")
+    public static void revokeAchievementManual(Context ctx) throws Exception {
+        if (!isAdmin(ctx)) return;
+        Map<String, Object> body = ctx.bodyAsClass(Map.class);
+        userDao.revokeAchievement(Integer.parseInt(ctx.pathParam("id")), (String) body.get("name"));
+        ctx.status(200).result("Ачивка забрана");
     }
 
     private static boolean isAdmin(Context ctx) throws Exception {

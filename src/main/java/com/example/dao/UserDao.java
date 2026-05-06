@@ -47,6 +47,13 @@ public class UserDao {
         }
     }
 
+    // --- НАЗНАЧЕНИЕ АДМИНА ---
+    public void makeAdmin(int userId) throws SQLException {
+        try (Connection conn = DatabaseConfig.getConnection(); PreparedStatement ps = conn.prepareStatement("UPDATE users SET role = 'ADMIN' WHERE id = ?")) {
+            ps.setInt(1, userId); ps.executeUpdate();
+        }
+    }
+
     // --- РЕЙТИНГ И АЧИВКИ ---
     public List<Map<String, Object>> getLeaderboard() throws SQLException {
         List<Map<String, Object>> list = new ArrayList<>();
@@ -78,14 +85,49 @@ public class UserDao {
         } catch (SQLException ignored) {}
     }
 
+    public void revokeAchievement(int userId, String achievementName) throws SQLException {
+        String sql = "DELETE FROM user_achievements WHERE user_id = ? AND achievement_id = (SELECT id FROM achievements_dict WHERE name = ?)";
+        try (Connection conn = DatabaseConfig.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, userId); ps.setString(2, achievementName); ps.executeUpdate();
+        }
+    }
+
     public List<Map<String, Object>> getAllAchievementsWithStatus(int userId) throws SQLException {
         List<Map<String, Object>> list = new ArrayList<>();
-        String sql = "SELECT d.name, d.icon, d.description, CASE WHEN u.id IS NOT NULL THEN true ELSE false END as earned " +
-                "FROM achievements_dict d LEFT JOIN user_achievements u ON d.id = u.achievement_id AND u.user_id = ?";
+        String sql = "SELECT d.id, d.name, d.icon, d.description, CASE WHEN u.id IS NOT NULL THEN true ELSE false END as earned " +
+                "FROM achievements_dict d LEFT JOIN user_achievements u ON d.id = u.achievement_id AND u.user_id = ? ORDER BY d.id ASC";
         try (Connection conn = DatabaseConfig.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, userId); ResultSet rs = ps.executeQuery();
-            while (rs.next()) list.add(Map.of("name", rs.getString("name"), "icon", rs.getString("icon"), "description", rs.getString("description"), "earned", rs.getBoolean("earned")));
+            while (rs.next()) list.add(Map.of("id", rs.getInt("id"), "name", rs.getString("name"), "icon", rs.getString("icon"), "description", rs.getString("description"), "earned", rs.getBoolean("earned")));
         }
         return list;
+    }
+
+    // --- CRUD ДЛЯ СЛОВАРЯ АЧИВОК (АДМИН) ---
+    public List<Map<String, Object>> getAchievementsDict() throws SQLException {
+        List<Map<String, Object>> list = new ArrayList<>();
+        String sql = "SELECT * FROM achievements_dict ORDER BY id ASC";
+        try (Connection conn = DatabaseConfig.getConnection(); Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) list.add(Map.of("id", rs.getInt("id"), "name", rs.getString("name"), "icon", rs.getString("icon"), "description", rs.getString("description")));
+        }
+        return list;
+    }
+
+    public void createAchievement(String name, String icon, String desc) throws SQLException {
+        try (Connection conn = DatabaseConfig.getConnection(); PreparedStatement ps = conn.prepareStatement("INSERT INTO achievements_dict (name, icon, description) VALUES (?, ?, ?)")) {
+            ps.setString(1, name); ps.setString(2, icon); ps.setString(3, desc); ps.executeUpdate();
+        }
+    }
+
+    public void updateAchievement(int id, String name, String icon, String desc) throws SQLException {
+        try (Connection conn = DatabaseConfig.getConnection(); PreparedStatement ps = conn.prepareStatement("UPDATE achievements_dict SET name=?, icon=?, description=? WHERE id=?")) {
+            ps.setString(1, name); ps.setString(2, icon); ps.setString(3, desc); ps.setInt(4, id); ps.executeUpdate();
+        }
+    }
+
+    public void deleteAchievement(int id) throws SQLException {
+        try (Connection conn = DatabaseConfig.getConnection(); PreparedStatement ps = conn.prepareStatement("DELETE FROM achievements_dict WHERE id=?")) {
+            ps.setInt(1, id); ps.executeUpdate();
+        }
     }
 }

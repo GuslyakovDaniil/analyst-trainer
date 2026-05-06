@@ -46,26 +46,42 @@ public class Main {
         app.get("/api/protected/test/{id}/start", AppController::startTest);
         app.post("/api/protected/session/{id}/submit", AppController::submitTest);
 
-        // --- ПРОФИЛЬ И ГЕЙМИФИКАЦИЯ ---
+        // Profile & Gamification Routes
         app.get("/api/protected/profile", AppController::getProfile);
         app.get("/api/protected/profile/session/{id}", AppController::getUserSessionDetails);
         app.get("/api/protected/leaderboard", AppController::getLeaderboard);
         app.post("/api/protected/profile/privacy", AppController::togglePrivacy);
         app.post("/api/protected/profile/update", AppController::updateProfile);
 
-        // Admin Routes
+        // Admin - Statistics and Users
         app.get("/api/protected/admin/users", AppController::getAdminUsers);
+        app.post("/api/protected/admin/user/{id}/make-admin", AppController::makeAdmin);
+        app.get("/api/protected/admin/user/{id}/sessions", AppController::getAdminSessions);
+        app.get("/api/protected/admin/session/{id}/details", AppController::getAdminSessionDetails);
+
+        // Admin - Review
         app.get("/api/protected/admin/pending", AppController::getAdminPending);
         app.post("/api/protected/admin/grade", AppController::gradeAnswer);
+
+        // Admin - Test Management
         app.get("/api/protected/admin/all-tests", AppController::getAdminAllTests);
         app.post("/api/protected/admin/test", AppController::createTest);
         app.delete("/api/protected/admin/test/{id}", AppController::deleteTest);
+
+        // Admin - Question Management
         app.get("/api/protected/admin/test/{id}/questions", AppController::getTestQuestions);
         app.post("/api/protected/admin/question", AppController::addQuestion);
         app.post("/api/protected/admin/question/{id}/update", AppController::updateQuestion);
         app.delete("/api/protected/admin/question/{id}", AppController::deleteQuestion);
-        app.get("/api/protected/admin/user/{id}/sessions", AppController::getAdminSessions);
-        app.get("/api/protected/admin/session/{id}/details", AppController::getAdminSessionDetails);
+
+        // Admin - Achievement Management (NEW)
+        app.get("/api/protected/admin/achievements", AppController::getAchievementsDict);
+        app.post("/api/protected/admin/achievement", AppController::createAchievement);
+        app.post("/api/protected/admin/achievement/{id}/update", AppController::updateAchievement);
+        app.delete("/api/protected/admin/achievement/{id}", AppController::deleteAchievement);
+        app.get("/api/protected/admin/user/{id}/achievements", AppController::getUserAchievementsAdmin);
+        app.post("/api/protected/admin/user/{id}/achievement/grant", AppController::grantAchievementManual);
+        app.post("/api/protected/admin/user/{id}/achievement/revoke", AppController::revokeAchievementManual);
 
         System.out.println("Система готова к работе.");
     }
