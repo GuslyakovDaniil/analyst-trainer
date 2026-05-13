@@ -7,7 +7,6 @@ import javax.crypto.SecretKey;
 import java.util.Date;
 
 public class SecurityUtil {
-    // В реальном проекте вынести в переменные окружения
     private static final String SECRET = "your-super-secret-key-must-be-very-long-and-secure-12345";
     private static final SecretKey KEY = Keys.hmacShaKeyFor(SECRET.getBytes());
 
